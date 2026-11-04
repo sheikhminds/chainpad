@@ -8,7 +8,7 @@
 
 **Live app:** https://sheikhminds.github.io/chainpad/
 
-ChainPad is a small, complete Solidity playground. It compiles real contracts with the official Solidity compiler (WebAssembly), runs them on an EVM that lives inside the tab, generates forms from the ABI, and lets you send a real deployment through your browser wallet. Everything runs locally: your code never leaves the page.
+ChainPad is a small, complete Solidity playground. It compiles real contracts with the official Solidity compiler (WebAssembly), runs them on an EVM that lives inside the tab, generates forms from the ABI, and can deploy and call those contracts on a real network through a browser or mobile wallet. Everything runs locally: your code never leaves the page.
 
 > Built and maintained by an autonomous AI agent. Code is written, tested and shipped without a human in the loop.
 
@@ -28,9 +28,9 @@ It is aimed at learning, prototyping and quick demos. It is not a replacement fo
 - **Generated interaction forms.** Read and write functions are rendered from the ABI, including arrays, structs (JSON input), payable values and overloads.
 - **JavaScript test runner.** Write tests with `test`, `expect`, `deploy`, `accounts` and `chain`. Every run starts on a fresh chain, so one failure cannot poison the next test. Matchers include `toBe`, `toEqual`, `toContain`, `toBeGreaterThan` and `await expect(promise).toRevert('reason')`.
 - **Four working templates.** Counter, ERC-20 token, a two-file Voting contract, and a Tiny NFT — each with a passing test file.
-- **Deploy with a browser wallet.** Optionally send the deployment transaction through MetaMask or another EIP-1193 wallet to a real network. ChainPad never sees your keys.
+- **Real networks, including from a phone.** Deploy and call contracts through an injected wallet (MetaMask and friends) or pair a mobile wallet with WalletConnect. Reads use `eth_call`, writes are confirmed in your wallet, and every transaction links to a block explorer. ChainPad never sees your keys.
 - **Mobile-first UI.** Code and tools switch with one tap; the desktop layout shows both side by side. Dark theme, keyboard shortcuts (`Ctrl/⌘ + Enter` to compile or run tests).
-- **Project import/export and autosave.** Download a project as JSON, drag it back in later, or rely on localStorage.
+- **Project import/export and autosave.** Download a project as JSON, drag it back in later, or rely on localStorage. Real-network deployments are remembered across reloads so their generated forms come back.
 - **Installable PWA.** Add it to your home screen; the shell and cached compiler work offline.
 - **No telemetry, no accounts, no backend.**
 
@@ -77,7 +77,8 @@ No secrets or environment variables are required.
 | `src/lib/chain.ts` | An in-memory EVM (`@ethereumjs/vm`) with three funded accounts. Reads execute against a checkpoint and are reverted; writes commit. |
 | `src/lib/abi.ts` | Argument parsing, calldata encoding, return-value and event decoding, revert-reason decoding (all via `viem`). |
 | `src/lib/tests.ts` | A tiny test runner that executes your JavaScript against a fresh devnet. |
-| `src/lib/wallet.ts` | Sends an `eth_sendTransaction` deployment through an injected EIP-1193 provider and waits for the receipt. |
+| `src/lib/wallet.ts` | Deploy, read and write through an EIP-1193 provider; waits for receipts, decodes events, refuses the wrong chain. |
+| `src/lib/walletconnect.ts` | Loads the WalletConnect SDK on demand, pairs a mobile wallet, and supplies the provider above. |
 | `src/lib/project.ts` | Templates, validation, serialisation and localStorage persistence. |
 | `src/ui/` | Framework-free DOM UI and a CodeMirror 6 Solidity editor. |
 
@@ -107,7 +108,8 @@ The suite runs with Vitest and covers:
 - deploy, read, write, events, reverts, balances and chain reset on the real EVM,
 - ABI parsing and formatting, including tuples, arrays and revert payloads,
 - the JavaScript test runner (passing, failing, `toRevert`, console capture, isolation),
-- browser-wallet deployment with a mocked EIP-1193 provider,
+- wallet deployment, reads and writes against a **real EVM** behind an EIP-1193 provider, a wrong-chain refusal and a revert,
+- WalletConnect pairing, project-id override, shared pairing attempts and fallback routing with a fake SDK,
 - the UI shell, and a full **compile → deploy → write → read** flow through the actual app.
 
 CI runs the build and the full suite on every push and pull request.
@@ -116,23 +118,32 @@ CI runs the build and the full suite on every push and pull request.
 
 ChainPad is honest about what it is not:
 
-- **The devnet is ephemeral.** Reloading the page clears balances, blocks and deployments. Export the project if you want to keep the code.
+- **The devnet is ephemeral.** Reloading the page clears balances, blocks and devnet deployments. Contracts deployed to a real network are remembered (address and ABI only) so their forms come back. Export the project if you want to keep the code.
 - **Devnet keys are random and live in memory.** Never send real funds to devnet addresses.
 - **No external imports.** Contracts can import files inside the project only. Vendor dependencies as files or keep contracts self-contained.
-- **Wallet support is deploy-only.** You can deploy through a browser wallet, but writing to wallet-deployed contracts from ChainPad is not wired up yet; use the wallet's own interface or a block explorer.
+- **Wallet sessions depend on your wallet.** Reads, writes and deployments on a real network need the wallet app awake and on the right chain; ChainPad refuses to send to a chain the contract does not live on rather than guessing.
+- **WalletConnect adds weight, on demand.** The SDK (~400 KB gzipped) is a separate lazy chunk: only people who tap "Deploy with mobile wallet" download it. Self-hosters can use their own Reown project id with `localStorage.setItem('chainpad:walletconnect-project-id', '…')`.
 - **Not a security tool.** The test runner executes JavaScript in the page; it is a convenience, not a sandbox. Do not paste code you do not trust.
 - **Not Hardhat or Foundry.** There is no Solidity debugger, gas profiler, fork mode, fuzzing, coverage, script runner or plugin ecosystem.
 - **Learning and prototyping only.** Audit and test thoroughly before putting value at risk on a real network.
 
 ## Roadmap
 
-- Wallet writes (not just deployments) for contracts on real networks.
 - Save and reopen named projects.
+- Optional read-only RPC so a deployed contract can be inspected without a wallet session.
 - More templates (staking, multisig, minimal proxy).
 - Shareable read-only links that embed a project in the URL.
 - Optional gas estimates before sending.
 
 Issues and ideas are welcome. Please keep reports reproducible and include the browser and contract involved.
+
+## Security
+
+- There is no backend, no account and no analytics. Contracts, projects and deployments stay in your browser's storage.
+- ChainPad never asks for a private key or seed phrase. Everything signed is confirmed in your wallet.
+- The WalletConnect project id in `src/lib/walletconnect.ts` is a public app identifier that ships in the bundle. It is not a credential; self-hosters can substitute their own.
+- `npm audit` reports advisories in the WalletConnect SDK's dependency tree (for example `zod`). Those modules are used by the SDK's Node/SSR paths and are **not** in the browser bundle: `grep -r ZodError dist/` finds nothing. They are tracked upstream and will be dropped as soon as the SDK updates.
+- A contract deployed to a real network is only as safe as your own review of it. ChainPad is an editor, not an auditor.
 
 ## Support the project
 

@@ -1,0 +1,14 @@
+# gitleaks configuration for ChainPad.
+#
+# The app has no server and no secrets: everything it needs is public. These
+# rules keep the scan focused on things that would actually be a mistake, such
+# as a committed `.env` or a real private key.
+title = "chainpad"
+
+[allowlist]
+description = "Build output and dependencies are not source."
+paths = [
+  '''dist/''',
+  '''node_modules/''',
+  '''package-lock\.json''',
+]

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../src/ui/app.ts';
+import { saveWalletDeployments } from '../src/lib/deployments.ts';
 import type { EditorFactory } from '../src/ui/editor.ts';
 
 const VERSIONS_KEY = 'chainpad:solc-versions:v1';
@@ -120,6 +121,37 @@ describe('app shell', () => {
     // Switching tabs re-renders the panel but must keep the edited source.
     root.querySelector<HTMLButtonElement>('[data-tab="learn"]')!.click();
     expect(root.querySelector('.panel-title')?.textContent).toBe('Learn');
+  });
+
+  it('restores a wallet deployment from a previous session', async () => {
+    saveWalletDeployments([
+      {
+        id: 'wallet-1',
+        name: 'Counter',
+        address: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+        abi: [
+          {
+            type: 'function',
+            name: 'count',
+            inputs: [],
+            outputs: [{ name: '', type: 'uint256' }],
+            stateMutability: 'view',
+          },
+        ],
+        contractId: 'Counter.sol:Counter',
+        chainId: 11155111,
+        createdAt: Date.now(),
+      },
+    ]);
+    await mount();
+
+    root.querySelector<HTMLButtonElement>('[data-tab="interact"]')!.click();
+
+    const meta = root.querySelector('.interact-meta');
+    expect(meta?.textContent).toContain('chain 11155111 (Sepolia)');
+    expect(root.querySelector('.fn-signature')?.textContent).toBe('count');
+    // The sender comes from the wallet, so no devnet account picker is shown.
+    expect(root.querySelector('.interact-meta')?.textContent).toContain('Sender: the account you pick in your wallet');
   });
 
   it('shows the Learn tab content', async () => {
