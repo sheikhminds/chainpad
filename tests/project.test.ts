@@ -2,11 +2,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   SCHEMA_VERSION,
+  SHARE_HASH_PREFIX,
   TEMPLATES,
   clearProject,
   defaultProject,
+  encodeProjectHash,
   loadProject,
   parseProject,
+  projectFromHash,
   saveProject,
   serializeProject,
 } from '../src/lib/project.ts';
@@ -81,5 +84,54 @@ describe('project model', () => {
   it('falls back to the default project when storage is corrupt', () => {
     localStorage.setItem('chainpad:project:v1', '{not json');
     expect(loadProject().name).toBe('Counter');
+  });
+});
+
+describe('share links', () => {
+  it('round-trips a project through the URL fragment', () => {
+    const project = TEMPLATES[2].project();
+    project.name = 'Shared voting';
+    const hash = encodeProjectHash(project);
+    expect(hash.startsWith(SHARE_HASH_PREFIX)).toBe(true);
+    // URL-safe: no +, / or = that would need escaping.
+    expect(hash.slice(SHARE_HASH_PREFIX.length)).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(projectFromHash(hash)).toEqual(project);
+  });
+
+  it('accepts the fragment with or without the leading #', () => {
+    const project = defaultProject();
+    const hash = encodeProjectHash(project);
+    expect(projectFromHash(hash.slice(1))).toEqual(project);
+  });
+
+  it('survives non-ASCII source in comments', () => {
+    const project = defaultProject();
+    project.files[0].content = `// পটভূমি — ünïcode ✓\npragma solidity ^0.8.20;\ncontract Counter {}`;
+    expect(projectFromHash(encodeProjectHash(project))?.files[0].content).toBe(
+      project.files[0].content,
+    );
+  });
+
+  it('returns null for a missing, malformed or unrelated fragment', () => {
+    expect(projectFromHash('')).toBeNull();
+    expect(projectFromHash('#')).toBeNull();
+    expect(projectFromHash('#section-2')).toBeNull();
+    expect(projectFromHash('#p=')).toBeNull();
+    expect(projectFromHash('#p=not-base64!!')).toBeNull();
+    expect(projectFromHash(`#p=${btoa('{"files":')}`)).toBeNull();
+  });
+
+  it('refuses to build an unusable link for a huge project', () => {
+    const project = defaultProject();
+    project.files[0].content = `// ${'x'.repeat(20_000)}`;
+    expect(() => encodeProjectHash(project)).toThrow(/too large for a share link/);
+  });
+
+  it('keeps the fragment free of the saved timestamp and schema wrapper', () => {
+    const hash = encodeProjectHash(defaultProject());
+    const decoded = atob(hash.slice(SHARE_HASH_PREFIX.length).replace(/-/g, '+').replace(/_/g, '/'));
+    expect(decoded.startsWith('{"name"')).toBe(true);
+    expect(decoded).not.toContain('exportedAt');
+    expect(decoded).not.toContain('schemaVersion');
   });
 });

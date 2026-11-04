@@ -17,7 +17,9 @@ import {
 } from '../lib/compile.ts';
 import {
   TEMPLATES,
+  encodeProjectHash,
   loadProject,
+  projectFromHash,
   parseProject,
   saveProject,
   serializeProject,
@@ -120,6 +122,9 @@ export class App {
   }
 
   async init(): Promise<void> {
+    const shared = projectFromHash(window.location.hash);
+    if (shared) this.project = shared;
+
     // Contracts on a real network outlive the tab, so their forms come back.
     this.deployments = loadWalletDeployments().map((stored) => ({ ...stored, via: 'wallet' as const }));
     if (this.deployments.length > 0) {
@@ -131,6 +136,8 @@ export class App {
     this.renderPanel();
     this.renderStatus();
     this.mountEditor();
+    // The toast host exists once the shell is built.
+    if (shared) this.toast('Loaded a shared project', 'ok');
 
     try {
       this.chain = await DevChain.create();
@@ -173,6 +180,7 @@ export class App {
       button('Templates', () => this.openTemplates(), { variant: 'ghost', title: 'Start from an example' }),
       button('Import', () => this.importProject(), { variant: 'ghost', title: 'Open a saved project file' }),
       button('Export', () => this.exportProject(), { variant: 'ghost', title: 'Download this project as JSON' }),
+      button('Share', () => void this.shareProject(), { variant: 'ghost', title: 'Copy a link that contains this project' }),
       h(
         'a',
         {
@@ -1204,6 +1212,27 @@ export class App {
     );
     card.appendChild(result);
     return card;
+  }
+
+  /** Copy a link that carries the project in its fragment. */
+  private async shareProject(): Promise<void> {
+    let hash: string;
+    try {
+      hash = encodeProjectHash(this.project);
+    } catch (error) {
+      this.toast(error instanceof Error ? error.message : String(error), 'error');
+      return;
+    }
+
+    const base = `${window.location.origin}${window.location.pathname}`;
+    const url = `${base}${hash}`;
+    if (await copyText(url)) {
+      this.toast('Share link copied', 'ok');
+      return;
+    }
+    // Clipboard blocked: put the link in the address bar so it can be copied.
+    window.location.hash = hash;
+    this.toast('Share link is in the address bar', 'ok');
   }
 
   private async disconnectWallet(): Promise<void> {
