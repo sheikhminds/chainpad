@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../src/ui/app.ts';
 import { saveWalletDeployments } from '../src/lib/deployments.ts';
+import { TEMPLATES, encodeProjectHash } from '../src/lib/project.ts';
 import { setFallbackProvider } from '../src/lib/wallet.ts';
 import type { EditorFactory } from '../src/ui/editor.ts';
 
@@ -44,6 +45,7 @@ let root: HTMLElement;
 let app: App;
 
 beforeEach(() => {
+  window.location.hash = '';
   localStorage.clear();
   seedVersions();
   document.body.innerHTML = '';
@@ -105,6 +107,37 @@ describe('app shell', () => {
     expect(workspace.dataset.view).toBe('panel');
     expect(root.querySelector('.panel-title')?.textContent).toBe('Interact');
     expect(root.querySelector('.empty')?.textContent).toContain('Nothing deployed yet');
+  });
+
+  it('opens a project from a share link and shares it back', async () => {
+    const project = TEMPLATES.find((item) => item.id === 'erc20')!.project();
+    project.name = 'Shared token';
+    window.location.hash = encodeProjectHash(project);
+
+    await mount();
+
+    expect(document.querySelector('.toast-ok')?.textContent).toBe('Loaded a shared project');
+    // The ERC-20 template is open, not the default Counter project.
+    expect(root.querySelector<HTMLTextAreaElement>('.editor-host textarea')?.value).toContain(
+      'contract Token',
+    );
+
+    // Sharing copies a link that carries the same project.
+    const written: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text: string) => void written.push(text) },
+    });
+    const share = [...root.querySelectorAll<HTMLButtonElement>('.header-actions .btn')].find(
+      (element) => element.textContent === 'Share',
+    );
+    expect(share).toBeDefined();
+    share!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(written).toHaveLength(1);
+    expect(written[0]).toContain('#p=');
+    expect(written[0]).toContain(window.location.origin);
   });
 
   it('opens the template picker with all four templates', async () => {

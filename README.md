@@ -30,6 +30,7 @@ It is aimed at learning, prototyping and quick demos. It is not a replacement fo
 - **Four working templates.** Counter, ERC-20 token, a two-file Voting contract, and a Tiny NFT — each with a passing test file.
 - **Real networks, including from a phone.** Deploy and call contracts through an injected wallet (MetaMask and friends) or pair a mobile wallet with WalletConnect. Reads use `eth_call`, writes are confirmed in your wallet, and every transaction links to a block explorer. ChainPad never sees your keys.
 - **Mobile-first UI.** Code and tools switch with one tap; the desktop layout shows both side by side. Dark theme, keyboard shortcuts (`Ctrl/⌘ + Enter` to compile or run tests).
+- **Share links with no server.** Press **Share** and the whole project is packed into the URL fragment (`#p=…`). Fragments are never sent to a host, so a shared contract stays as private as the link itself; opening one loads it straight into the editor.
 - **Project import/export and autosave.** Download a project as JSON, drag it back in later, or rely on localStorage. Real-network deployments are remembered across reloads so their generated forms come back.
 - **Installable PWA.** Add it to your home screen; the shell and cached compiler work offline.
 - **No telemetry, no accounts, no backend.**
@@ -111,6 +112,7 @@ The suite runs with Vitest and covers:
 - wallet deployment, reads and writes against a **real EVM** behind an EIP-1193 provider, a wrong-chain refusal and a revert,
 - WalletConnect pairing, project-id override, shared pairing attempts and fallback routing with a fake SDK,
 - the UI shell, and a full **compile → deploy → write → read** flow through the actual app,
+- share-link encoding: round-trip, URL-safe alphabet, non-ASCII source, malformed fragments and the size cap,
 - the phone layout contract read from the real `src/style.css`: editor/tools switching, the floating Tools button, panel padding, and adjacent 899/900 breakpoints.
 
 CI runs the build and the full suite on every push and pull request.
@@ -133,7 +135,6 @@ ChainPad is honest about what it is not:
 - Save and reopen named projects.
 - Optional read-only RPC so a deployed contract can be inspected without a wallet session.
 - More templates (staking, multisig, minimal proxy).
-- Shareable read-only links that embed a project in the URL.
 - Optional gas estimates before sending.
 
 Issues and ideas are welcome. Please keep reports reproducible and include the browser and contract involved.

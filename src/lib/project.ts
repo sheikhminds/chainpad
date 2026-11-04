@@ -417,6 +417,71 @@ export function serializeProject(project: Project): string {
   )}\n`;
 }
 
+/**
+ * Shareable project links.
+ *
+ * The project is packed into the URL fragment (`#p=…`), which never leaves the
+ * browser: no server, no storage, no account. Fragments are not sent to any
+ * host, so a shared link is exactly as private as the code inside it.
+ */
+export const SHARE_HASH_PREFIX = '#p=';
+
+/** Above this the URL gets unwieldy in chat apps and QR codes; use a file instead. */
+const MAX_SHARE_BYTES = 12_000;
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function toBase64Url(text: string): string {
+  const bytes = encoder.encode(text);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(value: string): string {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/');
+  const paddedToFour = padded.padEnd(padded.length + ((4 - (padded.length % 4)) % 4), '=');
+  const binary = atob(paddedToFour);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return decoder.decode(bytes);
+}
+
+/**
+ * Encode a project as a URL fragment.
+ * Throws when the project is too large to be a sane link, so the UI can say so.
+ */
+export function encodeProjectHash(project: Project): string {
+  const payload = JSON.stringify({
+    name: project.name,
+    files: project.files,
+    activeFile: project.activeFile,
+    settings: project.settings,
+    tests: project.tests,
+  });
+  const bytes = encoder.encode(payload).length;
+  if (bytes > MAX_SHARE_BYTES) {
+    throw new Error(
+      `This project is ${Math.round(bytes / 1024)} KB, too large for a share link. Export it as a file instead.`,
+    );
+  }
+  return `${SHARE_HASH_PREFIX}${toBase64Url(payload)}`;
+}
+
+/** Decode a project from a URL fragment; returns null for anything malformed. */
+export function projectFromHash(hash: string): Project | null {
+  if (!hash) return null;
+  const value = hash.replace(/^#/, '');
+  if (!value.startsWith('p=')) return null;
+  const encoded = value.slice(2);
+  if (!encoded) return null;
+  try {
+    return normalizeProject(JSON.parse(fromBase64Url(encoded)));
+  } catch {
+    return null;
+  }
+}
+
 export function loadProject(): Project {
   if (typeof localStorage === 'undefined') return defaultProject();
   try {
