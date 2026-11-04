@@ -89,6 +89,8 @@ export class App {
   private versions: CompilerBuild[] = [];
   private chain: DevChain | null = null;
   private deployments: Deployment[] = [];
+  /** Chain of the most recent wallet deployment, once one succeeded. */
+  private walletChainId: number | null = null;
   private selectedDeploymentId: string | null = null;
   private selectedContractId: string | null = null;
   private accountIndex = 0;
@@ -887,6 +889,7 @@ export class App {
         chainId: result.chainId,
         createdAt: Date.now(),
       });
+      this.walletChainId = result.chainId;
       this.toast(`Deployed on ${describeChain(result.chainId)} at ${shortAddress(result.address)}`, 'ok');
       this.selectTab('interact');
     } catch (error) {
@@ -1435,7 +1438,7 @@ export class App {
       ['3. Deploy', 'Deploy to the devnet, an EVM that runs entirely in this tab. Accounts, gas, events and reverts are real.'],
       ['4. Interact', 'Forms are generated from the ABI. Read calls are free; writes mine instantly.'],
       ['5. Test', 'Write JavaScript tests that run on a fresh chain, so one failed test cannot poison the next.'],
-      ['6. Ship', 'Export the project, deploy with your own wallet, and share the link. No account, no server, no build step.'],
+      ['6. Ship', 'Export the project, deploy to a real network with your wallet (MetaMask on a desktop, WalletConnect on a phone), and share the link. No account, no server, no build step.'],
     ];
 
     for (const [title, body] of steps) {
@@ -1659,7 +1662,14 @@ export class App {
         this.compileInfo
           ? h('span', { class: 'muted' }, ` · compiler ${this.compileInfo.version.split('+')[0]}`)
           : null,
-        h('span', { class: 'muted status-note' }, ' · state resets on reload'),
+        walletProviderKind()
+          ? h(
+              'span',
+              { class: 'badge badge-warn status-wallet', title: 'A wallet is connected for real-network calls' },
+              this.walletChainId !== null ? describeChain(this.walletChainId) : 'Wallet connected',
+            )
+          : null,
+        h('span', { class: 'muted status-note' }, ' · devnet resets on reload'),
       ),
     );
   }

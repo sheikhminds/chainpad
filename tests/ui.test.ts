@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from '../src/ui/app.ts';
 import { saveWalletDeployments } from '../src/lib/deployments.ts';
+import { setFallbackProvider } from '../src/lib/wallet.ts';
 import type { EditorFactory } from '../src/ui/editor.ts';
 
 const VERSIONS_KEY = 'chainpad:solc-versions:v1';
@@ -52,6 +53,7 @@ beforeEach(() => {
 
 afterEach(() => {
   app?.destroy();
+  setFallbackProvider(null);
 });
 
 async function mount(): Promise<void> {
@@ -69,7 +71,16 @@ describe('app shell', () => {
       'contract Counter',
     );
     expect(root.querySelector('.statusbar')?.textContent).toContain('ChainPad Devnet');
+    expect(root.querySelector('.statusbar')?.textContent).toContain('devnet resets on reload');
+    // No wallet paired yet, so no wallet chip is advertised.
+    expect(root.querySelector('.status-wallet')).toBeNull();
     expect(root.querySelector('.panel-title')?.textContent).toBe('Build');
+  });
+
+  it('shows a wallet chip once a mobile wallet is paired', async () => {
+    setFallbackProvider({ request: async () => [] });
+    await mount();
+    expect(root.querySelector('.status-wallet')?.textContent).toBe('Wallet connected');
   });
 
   it('starts the devnet with three accounts', async () => {
