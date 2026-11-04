@@ -110,7 +110,8 @@ The suite runs with Vitest and covers:
 - the JavaScript test runner (passing, failing, `toRevert`, console capture, isolation),
 - wallet deployment, reads and writes against a **real EVM** behind an EIP-1193 provider, a wrong-chain refusal and a revert,
 - WalletConnect pairing, project-id override, shared pairing attempts and fallback routing with a fake SDK,
-- the UI shell, and a full **compile → deploy → write → read** flow through the actual app.
+- the UI shell, and a full **compile → deploy → write → read** flow through the actual app,
+- the phone layout contract read from the real `src/style.css`: editor/tools switching, the floating Tools button, panel padding, and adjacent 899/900 breakpoints.
 
 CI runs the build and the full suite on every push and pull request.
 
