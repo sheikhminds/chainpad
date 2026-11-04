@@ -1,0 +1,65 @@
+{
+  "name": "chainpad",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Build, test, and deploy smart contracts in your browser. Open source, works on any device, hosted free on GitHub Pages.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Likhon Sheikh",
+  "homepage": "https://sheikhminds.github.io/chainpad/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sheikhminds/chainpad.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sheikhminds/chainpad/issues"
+  },
+  "keywords": [
+    "solidity",
+    "ethereum",
+    "evm",
+    "smart-contracts",
+    "ide",
+    "browser",
+    "webassembly",
+    "github-pages",
+    "developer-tools"
+  ],
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/sheikhminds"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.8.1",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.36.5",
+    "@ethereumjs/block": "^10.1.1",
+    "@ethereumjs/common": "^10.1.1",
+    "@ethereumjs/statemanager": "^10.1.1",
+    "@ethereumjs/tx": "^10.1.1",
+    "@ethereumjs/util": "^10.1.1",
+    "@ethereumjs/vm": "^10.1.1",
+    "@replit/codemirror-lang-solidity": "^6.0.2",
+    "viem": "^2.57.16"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "happy-dom": "^21.0.4",
+    "solc": "^0.8.30",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.7",
+    "vitest": "^3.2.4"
+  }
+}

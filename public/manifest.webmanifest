@@ -1,0 +1,27 @@
+{
+  "name": "ChainPad — smart contracts in your browser",
+  "short_name": "ChainPad",
+  "description": "A free, open-source Solidity IDE that compiles, tests and deploys contracts entirely in your browser. Works on phones, tablets and desktops.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "categories": ["developer", "education", "productivity"],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
