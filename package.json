@@ -1,6 +1,6 @@
 {
   "name": "chainpad",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Build, test, and deploy smart contracts in your browser. Open source, works on any device, hosted free on GitHub Pages.",
   "type": "module",
