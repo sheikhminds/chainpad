@@ -8,6 +8,7 @@ import {
   type AbiFunctionInfo,
 } from '../lib/abi.ts';
 import { CHAIN_ID, CHAIN_NAME, DevChain, type DevAccount, type TxLog } from '../lib/chain.ts';
+import { loadWalletDeployments, saveWalletDeployments } from '../lib/deployments.ts';
 import {
   compileProject,
   unlinkedLibraries,
@@ -25,7 +26,17 @@ import {
 } from '../lib/project.ts';
 import { getCompiler, listCompilerVersions, type CompilerBuild } from '../lib/solc.ts';
 import { runTestSuite, type TestRun } from '../lib/tests.ts';
-import { deployWithWallet, hasInjectedWallet } from '../lib/wallet.ts';
+import {
+  deployWithWallet,
+  describeChain,
+  ensureWalletProvider,
+  explorerTxUrl,
+  hasInjectedWallet,
+  readWithWallet,
+  setFallbackProvider,
+  walletProviderKind,
+  writeWithWallet,
+} from '../lib/wallet.ts';
 import {
   appendChildren,
   button,
@@ -51,6 +62,8 @@ interface Deployment {
   abi: Abi;
   contractId: string;
   via: 'devnet' | 'wallet';
+  /** Set for wallet deployments: the network the contract actually lives on. */
+  chainId?: number;
   createdAt: number;
 }
 
@@ -105,6 +118,11 @@ export class App {
   }
 
   async init(): Promise<void> {
+    // Contracts on a real network outlive the tab, so their forms come back.
+    this.deployments = loadWalletDeployments().map((stored) => ({ ...stored, via: 'wallet' as const }));
+    if (this.deployments.length > 0) {
+      this.selectedDeploymentId = this.deployments[this.deployments.length - 1].id;
+    }
     this.buildShell();
     this.renderTabs();
     this.renderFileBar();
@@ -739,15 +757,16 @@ export class App {
       () => void this.deployContract(contract),
       { variant: 'primary', disabled: !canDeploy || this.busy !== null },
     );
+    const injected = hasInjectedWallet();
     const walletButton = button(
-      hasInjectedWallet() ? 'Deploy with browser wallet' : 'No browser wallet found',
+      injected ? 'Deploy with browser wallet' : 'Deploy with mobile wallet',
       () => void this.deployToWallet(contract),
       {
         variant: 'ghost',
-        disabled: !canDeploy || !hasInjectedWallet() || this.busy !== null,
-        title: hasInjectedWallet()
+        disabled: !canDeploy || this.busy !== null,
+        title: injected
           ? 'Send a real deployment transaction through your wallet'
-          : 'Install MetaMask or another EIP-1193 wallet to deploy to a real network',
+          : 'Connect a wallet with WalletConnect (QR code on desktop, deep link on a phone), then deploy to a real network',
       },
     );
 
@@ -758,7 +777,9 @@ export class App {
         { class: 'hint' },
         libraries.length > 0
           ? 'This contract links external libraries. Inline the library code or deploy and link it manually first.'
-          : 'Devnet state lives in this tab: a reload starts a fresh chain. Use a browser wallet to deploy to a real network.',
+          : injected
+            ? 'Devnet state lives in this tab: a reload starts a fresh chain. Your wallet deploys to a real network.'
+            : 'Devnet state lives in this tab: a reload starts a fresh chain. No browser wallet? The mobile option pairs one over WalletConnect.',
       ),
     );
     return form;
@@ -844,8 +865,12 @@ export class App {
       return;
     }
 
-    this.setBusy('Waiting for your wallet…');
+    this.setBusy(hasInjectedWallet() ? 'Waiting for your wallet…' : 'Opening your wallet…');
     try {
+      // Phones have no injected provider; this opens WalletConnect and waits
+      // for the pairing before the deployment transaction is prepared.
+      const route = await ensureWalletProvider();
+      this.setBusy(route === 'injected' ? 'Waiting for your wallet…' : 'Pairing… confirm in your wallet app');
       const result = await deployWithWallet({
         abi: contract.abi,
         bytecode: contract.bytecode as Hex,
@@ -859,9 +884,10 @@ export class App {
         abi: contract.abi,
         contractId: contract.id,
         via: 'wallet',
+        chainId: result.chainId,
         createdAt: Date.now(),
       });
-      this.toast(`Deployed with your wallet at ${shortAddress(result.address)}`, 'ok');
+      this.toast(`Deployed on ${describeChain(result.chainId)} at ${shortAddress(result.address)}`, 'ok');
       this.selectTab('interact');
     } catch (error) {
       this.toast(error instanceof Error ? error.message : String(error), 'error');
@@ -875,6 +901,24 @@ export class App {
   private addDeployment(deployment: Deployment): void {
     this.deployments = [...this.deployments, deployment];
     this.selectedDeploymentId = deployment.id;
+    this.persistWalletDeployments();
+  }
+
+  /** Keep real-network deployments across reloads; devnet ones stay ephemeral. */
+  private persistWalletDeployments(): void {
+    saveWalletDeployments(
+      this.deployments
+        .filter((deployment) => deployment.via === 'wallet' && deployment.chainId !== undefined)
+        .map((deployment) => ({
+          id: deployment.id,
+          name: deployment.name,
+          address: deployment.address,
+          abi: deployment.abi,
+          contractId: deployment.contractId,
+          chainId: deployment.chainId as number,
+          createdAt: deployment.createdAt,
+        })),
+    );
   }
 
   private renderInteractPanel(): HTMLElement {
@@ -883,9 +927,19 @@ export class App {
       this.panelHeader(
         'Interact',
         'Call the deployed contract with auto-generated forms.',
-        this.deployments.length > 0
-          ? button('Reset devnet', () => void this.resetChain(), { variant: 'quiet', title: 'Clear chain state and deployments' })
-          : null,
+        h(
+          'div',
+          { class: 'button-row' },
+          walletProviderKind() === 'walletconnect'
+            ? button('Disconnect wallet', () => void this.disconnectWallet(), {
+                variant: 'quiet',
+                title: 'End the WalletConnect pairing',
+              })
+            : null,
+          this.deployments.length > 0
+            ? button('Reset devnet', () => void this.resetChain(), { variant: 'quiet', title: 'Clear devnet state and devnet deployments' })
+            : null,
+        ),
       ),
     );
 
@@ -913,7 +967,13 @@ export class App {
         selectInput(
           this.deployments.map((item) => ({
             value: item.id,
-            label: `${item.name} · ${shortAddress(item.address)}${item.via === 'wallet' ? ' (wallet)' : ''}`,
+            label: `${item.name} · ${shortAddress(item.address)}${
+              item.via === 'wallet'
+                ? item.chainId !== undefined
+                  ? ` (${describeChain(item.chainId)})`
+                  : ' (wallet)'
+                : ''
+            }`,
           })),
           deployment.id,
           (value) => {
@@ -946,9 +1006,11 @@ export class App {
       h(
         'div',
         { class: 'interact-meta' },
-        h('span', { class: `badge ${deployment.via === 'wallet' ? 'badge-warn' : 'badge-ok'}` }, deployment.via === 'wallet' ? 'Real network' : 'Devnet'),
+        h('span', { class: `badge ${deployment.via === 'wallet' ? 'badge-warn' : 'badge-ok'}` }, deployment.via === 'wallet' ? (deployment.chainId !== undefined ? describeChain(deployment.chainId) : 'Real network') : 'Devnet'),
         h('span', { class: 'muted' }, `Contract: ${deployment.name}`),
-        h('label', { class: 'control control-inline' }, h('span', {}, 'From'), accountSelect),
+        deployment.via === 'wallet'
+          ? h('span', { class: 'muted' }, 'Sender: the account you pick in your wallet')
+          : h('label', { class: 'control control-inline' }, h('span', {}, 'From'), accountSelect),
       ),
     );
 
@@ -995,11 +1057,28 @@ export class App {
     const call = async () => {
       result.className = 'fn-result';
       clear(result);
-      result.appendChild(h('span', { class: 'muted' }, 'Running…'));
+      result.appendChild(
+        h('span', { class: 'muted' }, fn.kind === 'read' ? 'Calling…' : 'Waiting for your wallet…'),
+      );
       try {
         const values = inputs.map((input) => input.value);
         const args = parseArguments(fn.inputs, values);
         if (fn.kind === 'read') {
+          if (deployment.via === 'wallet') {
+            await ensureWalletProvider();
+            const outcome = await readWithWallet({
+              address: deployment.address,
+              abi: deployment.abi,
+              functionName: fn.name,
+              args,
+              chainId: deployment.chainId,
+            });
+            clear(result);
+            result.appendChild(
+              h('div', { class: 'fn-value' }, formatValue(outcome.value) || '(no return value)'),
+            );
+            return;
+          }
           if (!this.chain) throw new Error('Devnet is not ready');
           const outcome = await this.chain.read({
             address: deployment.address,
@@ -1018,33 +1097,78 @@ export class App {
               h('div', { class: 'fn-raw muted' }, `raw: ${outcome.raw === '0x' ? '0x' : monoId(outcome.raw, 12)}`),
             );
           }
-        } else {
-          if (deployment.via === 'wallet') {
-            throw new Error('Writing through a browser wallet is not wired up yet — use your wallet app or a devnet deployment.');
-          }
-          if (!this.chain) throw new Error('Devnet is not ready');
-          const tx = await this.chain.write({
+          return;
+        }
+
+        if (deployment.via === 'wallet') {
+          await ensureWalletProvider();
+          const outcome = await writeWithWallet({
             address: deployment.address,
             abi: deployment.abi,
             functionName: fn.name,
-            fn: fn.fn,
             args,
             value: this.readValue(card, `value-${fn.key}`),
-            contractId: deployment.contractId,
-            contractName: deployment.name,
-            account: this.chain.accounts[this.accountIndex]?.address,
+            chainId: deployment.chainId,
           });
           clear(result);
+          if (outcome.status === 'reverted') {
+            result.appendChild(
+              h('div', { class: 'fn-error' }, `Transaction reverted in block ${outcome.blockNumber}`),
+            );
+          } else {
+            result.appendChild(
+              h(
+                'div',
+                { class: 'fn-ok' },
+                `✓ block ${outcome.blockNumber} · ${describeChain(outcome.chainId)}`,
+              ),
+            );
+          }
+          const explorer = explorerTxUrl(outcome.chainId, outcome.hash);
           result.appendChild(
-            h('div', { class: 'fn-ok' }, `✓ block ${tx.blockNumber} · gas ${tx.gasUsed.toString()}`),
+            explorer
+              ? h(
+                  'a',
+                  {
+                    class: 'fn-raw',
+                    href: explorer,
+                    target: '_blank',
+                    rel: 'noreferrer noopener',
+                  },
+                  `tx ${monoId(outcome.hash, 12)} ↗`,
+                )
+              : h('div', { class: 'fn-raw muted' }, `tx ${monoId(outcome.hash, 12)}`),
           );
-          for (const log of tx.logs) {
+          for (const log of outcome.events) {
             result.appendChild(
               h('div', { class: 'fn-event' }, `event ${log.eventName}(${formatValue(log.args)})`),
             );
           }
-          this.renderStatus();
+          return;
         }
+
+        if (!this.chain) throw new Error('Devnet is not ready');
+        const tx = await this.chain.write({
+          address: deployment.address,
+          abi: deployment.abi,
+          functionName: fn.name,
+          fn: fn.fn,
+          args,
+          value: this.readValue(card, `value-${fn.key}`),
+          contractId: deployment.contractId,
+          contractName: deployment.name,
+          account: this.chain.accounts[this.accountIndex]?.address,
+        });
+        clear(result);
+        result.appendChild(
+          h('div', { class: 'fn-ok' }, `✓ block ${tx.blockNumber} · gas ${tx.gasUsed.toString()}`),
+        );
+        for (const log of tx.logs) {
+          result.appendChild(
+            h('div', { class: 'fn-event' }, `event ${log.eventName}(${formatValue(log.args)})`),
+          );
+        }
+        this.renderStatus();
       } catch (error) {
         clear(result);
         result.appendChild(
@@ -1079,14 +1203,26 @@ export class App {
     return card;
   }
 
+  private async disconnectWallet(): Promise<void> {
+    const { disconnectWallet } = await import('../lib/walletconnect.ts');
+    await disconnectWallet();
+    setFallbackProvider(null);
+    this.toast('Wallet disconnected', 'ok');
+    this.renderPanel();
+  }
+
   private async resetChain(): Promise<void> {
     if (!this.chain) return;
-    if (!window.confirm('Reset the devnet? Balances and deployed contracts in this tab are cleared.')) return;
+    if (!window.confirm('Reset the devnet? Balances and contracts deployed to it in this tab are cleared. Wallet deployments stay.')) return;
     this.setBusy('Resetting devnet…');
     try {
       await this.chain.reset();
-      this.deployments = [];
-      this.selectedDeploymentId = null;
+      // Real-network deployments are still valid after a devnet reset.
+      this.deployments = this.deployments.filter((deployment) => deployment.via === 'wallet');
+      if (!this.deployments.some((deployment) => deployment.id === this.selectedDeploymentId)) {
+        this.selectedDeploymentId = this.deployments.at(-1)?.id ?? null;
+      }
+      this.persistWalletDeployments();
       this.toast('Devnet reset', 'ok');
     } catch (error) {
       this.toast(error instanceof Error ? error.message : String(error), 'error');

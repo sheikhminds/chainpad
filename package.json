@@ -1,6 +1,6 @@
 {
   "name": "chainpad",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Build, test, and deploy smart contracts in your browser. Open source, works on any device, hosted free on GitHub Pages.",
   "type": "module",
@@ -52,6 +52,7 @@
     "@ethereumjs/util": "^10.1.1",
     "@ethereumjs/vm": "^10.1.1",
     "@replit/codemirror-lang-solidity": "^6.0.2",
+    "@walletconnect/ethereum-provider": "^2.26.0",
     "viem": "^2.57.16"
   },
   "devDependencies": {
